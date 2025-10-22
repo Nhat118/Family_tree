@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useTree } from "../contexts/TreeContext";
 import BinaryTreeCanvas from "../components/BinaryTreeCanvas";
+import { upsertRelation, removeRelation } from "../services/relationService";
 import MemberList from "../components/MemberList";
 import { ArrowLeft, Edit3, Trash2, Users, Plus, Settings, List, TreePine } from "lucide-react";
 
@@ -60,6 +61,19 @@ export default function FamilyTree() {
     );
     
     await editTree(activeTree.id, { members: updatedMembers });
+  };
+
+  // Relationship helpers aligned to SQL mapping
+  const addRelation = async (fromId, toId, type) => {
+    if (!activeTree) return;
+    const nextRelations = upsertRelation(activeTree.relations, { from: fromId, to: toId, type });
+    await editTree(activeTree.id, { relations: nextRelations });
+  };
+
+  const deleteRelation = async (fromId, toId, type) => {
+    if (!activeTree) return;
+    const nextRelations = removeRelation(activeTree.relations, { from: fromId, to: toId, type });
+    await editTree(activeTree.id, { relations: nextRelations });
   };
 
   const handleDeleteMember = async (memberId) => {

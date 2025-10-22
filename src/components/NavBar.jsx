@@ -33,7 +33,7 @@ export default function NavBar() {
             </li>
             {user && (
               <li className="nav-item">
-                <Link to="/dashboard" className="nav-link">Dashboard</Link>
+                <Link to="/dashboard" className="nav-link">Trang cá nhân</Link>
               </li>
             )}
             {user?.role === "admin" && (

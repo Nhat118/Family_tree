@@ -1,10 +1,13 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Edit3, Trash2, UserPlus, Users } from "lucide-react";
+import { searchMembers } from "../services/relationService";
 
 export default function MemberList({ members = [], relations = [], onEditMember, onDeleteMember, onAddMember }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [form, setForm] = useState({ name: "", gender: "", birthDate: "" });
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => searchMembers(members, query), [members, query]);
 
   const getMemberRelations = (memberId) => {
     const memberRelations = relations.filter(r => r.from === memberId || r.to === memberId);
@@ -60,6 +63,9 @@ export default function MemberList({ members = [], relations = [], onEditMember,
         </button>
       </div>
       <div className="card-body p-0">
+        <div className="p-3 border-bottom bg-light">
+          <input className="form-control" placeholder="Tìm kiếm theo tên, ngày sinh, giới tính..." value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
         {members.length === 0 ? (
           <div className="text-center py-4 text-muted">
             <Users size={48} className="mb-2" />
@@ -82,7 +88,7 @@ export default function MemberList({ members = [], relations = [], onEditMember,
                 </tr>
               </thead>
               <tbody>
-                {members.map((member) => {
+                {filtered.map((member) => {
                   const relations = getMemberRelations(member.id);
                   return (
                     <tr key={member.id}>

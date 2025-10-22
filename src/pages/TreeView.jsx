@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useTree } from "../contexts/TreeContext";
 
 export default function TreeView() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { trees, loading, addTree, editTree, removeTree } = useTree();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -35,6 +36,17 @@ export default function TreeView() {
     }
   }
 
+  const q = new URLSearchParams(location.search).get('search') || '';
+  const filteredTrees = useMemo(() => {
+    const keyword = q.trim().toLowerCase();
+    if (!keyword) return trees;
+    return trees.filter(t =>
+      (t.title || '').toLowerCase().includes(keyword) ||
+      (t.description || '').toLowerCase().includes(keyword) ||
+      (t.ownerName || '').toLowerCase().includes(keyword)
+    );
+  }, [trees, q]);
+
   return (
     <div className="container py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
@@ -45,7 +57,7 @@ export default function TreeView() {
       {loading && <div className="alert alert-info">Đang tải...</div>}
 
       <div className="row g-3">
-        {trees.map((t) => (
+        {filteredTrees.map((t) => (
           <div className="col-12 col-md-6 col-lg-4" key={t.id}>
             <div className="card h-100">
               {t.coverUrl ? (
