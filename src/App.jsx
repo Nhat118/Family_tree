@@ -10,7 +10,10 @@ import Dashboard from "./pages/Dashboard";
 import MemberEditor from "./pages/MemberEdit";
 import Admin from "./pages/Admin/AdminHome";
 import AdminUsers from "./pages/Admin/UserManager";
+import AdminTrees from "./pages/Admin/TreesManager";
+import AdminReports from "./pages/Admin/Reports";
 import RequireAuth from "./components/RequireAuth";
+import Profile from "./pages/Profile";
 
 export default function App() {
   const { user } = useAuth();
@@ -31,6 +34,15 @@ export default function App() {
             element={
               <RequireAuth>
                 <Dashboard />
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/profile"
+            element={
+              <RequireAuth>
+                <Profile />
               </RequireAuth>
             }
           />
@@ -57,6 +69,22 @@ export default function App() {
             element={
               <RequireAuth role="admin">
                 <AdminUsers />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/trees"
+            element={
+              <RequireAuth role="admin">
+                <AdminTrees />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/reports"
+            element={
+              <RequireAuth role="admin">
+                <AdminReports />
               </RequireAuth>
             }
           />
