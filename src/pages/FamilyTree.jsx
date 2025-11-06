@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useTree } from "../contexts/TreeContext";
+import { useSocial } from "../contexts/SocialContext";
 import BinaryTreeCanvas from "../components/BinaryTreeCanvas";
 import { upsertRelation, removeRelation } from "../services/relationService";
 import MemberList from "../components/MemberList";
-import { ArrowLeft, Edit3, Trash2, Users, Plus, Settings, List, TreePine } from "lucide-react";
+import TreeSocial from "../components/TreeSocial";
+import ShareDialog from "../components/social/ShareDialog";
+import { ArrowLeft, Edit3, Trash2, Settings, List, TreePine, Share2, MessageSquare, Users } from "lucide-react";
 
 export default function FamilyTree() {
   const { treeId } = useParams();
@@ -14,6 +17,17 @@ export default function FamilyTree() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editForm, setEditForm] = useState({ title: "", coverUrl: "", description: "" });
   const [viewMode, setViewMode] = useState('tree'); // 'tree' or 'list'
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showSocial, setShowSocial] = useState(false);
+
+  // Calculate stats
+  const stats = useMemo(() => {
+    if (!activeTree) return { memberCount: 0, relationCount: 0 };
+    return {
+      memberCount: activeTree.members?.length || 0,
+      relationCount: activeTree.relations?.length || 0
+    };
+  }, [activeTree]);
 
   // Load tree data when treeId changes
   useEffect(() => {
@@ -92,48 +106,6 @@ export default function FamilyTree() {
     }
   };
 
-  const handleAddMember = async (memberData) => {
-    if (!activeTree) return;
-    
-    const nextId = activeTree.members.length ? Math.max(...activeTree.members.map(m => m.id)) + 1 : 1;
-    const newMember = { 
-      id: nextId, 
-      name: memberData.name || 'Thành viên mới', 
-      gender: memberData.gender || '', 
-      birthDate: memberData.birthDate || '' 
-    };
-    
-    const updatedMembers = [...activeTree.members, newMember];
-    await editTree(activeTree.id, { members: updatedMembers });
-  };
-
-  const memberCount = activeTree?.members?.length || 0;
-  const relationCount = activeTree?.relations?.length || 0;
-
-  if (loading) {
-    return (
-      <div className="container py-4">
-        <div className="d-flex justify-content-center align-items-center" style={{ height: "400px" }}>
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Đang tải...</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!activeTree) {
-    return (
-      <div className="container py-4">
-        <div className="alert alert-warning">
-          <h4>Không tìm thấy gia phả</h4>
-          <p>Gia phả bạn đang tìm kiếm không tồn tại hoặc đã bị xóa.</p>
-          <Link to="/tree" className="btn btn-primary">Quay lại danh sách</Link>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="container-fluid py-4">
       {/* Header */}
@@ -172,6 +144,14 @@ export default function FamilyTree() {
               </button>
             </div>
             <div className="btn-group ms-2">
+              <button
+                className="btn btn-outline-primary"
+                onClick={() => setShowShareDialog(true)}
+                title="Chia sẻ gia phả"
+              >
+                <Share2 size={16} className="me-1" />
+                Chia sẻ
+              </button>
               <button 
                 className="btn btn-outline-secondary" 
                 onClick={() => setShowEditForm(true)}
@@ -201,7 +181,7 @@ export default function FamilyTree() {
               <div className="d-flex align-items-center">
                 <Users size={24} className="me-2" />
                 <div>
-                  <div className="h4 mb-0">{memberCount}</div>
+                  <div className="h4 mb-0">{stats.memberCount}</div>
                   <div className="small">Thành viên</div>
                 </div>
               </div>
@@ -214,7 +194,7 @@ export default function FamilyTree() {
               <div className="d-flex align-items-center">
                 <Settings size={24} className="me-2" />
                 <div>
-                  <div className="h4 mb-0">{relationCount}</div>
+                  <div className="h4 mb-0">{stats.relationCount}</div>
                   <div className="small">Quan hệ</div>
                 </div>
               </div>
@@ -230,6 +210,13 @@ export default function FamilyTree() {
               </p>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Data Management */}
+      <div className="row mb-4">
+        <div className="col-12">
+          <DataManager treeId={activeTree.id} />
         </div>
       </div>
 
@@ -344,6 +331,18 @@ export default function FamilyTree() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Share Dialog */}
+      {showShareDialog && (
+        <ShareDialog 
+          onClose={() => setShowShareDialog(false)}
+          onShare={(shareData) => {
+            // TODO: Implement sharing logic
+            console.log('Share data:', shareData);
+            setShowShareDialog(false);
+          }}
+        />
       )}
     </div>
   );

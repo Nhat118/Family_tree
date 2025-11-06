@@ -1,10 +1,13 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { Search } from "lucide-react"; // icon đẹp (lucide-react)
+import { useTheme } from "../contexts/ThemeContext";
+import { Search, Moon, Sun } from "lucide-react";
+import Notifications from "./Notifications";
 
 export default function NavBar() {
   const { user, logout } = useAuth();
+  const { isDarkMode, toggleTheme } = useTheme();
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
 
@@ -43,6 +46,14 @@ export default function NavBar() {
             )}
           </ul>
 
+          <button
+            className="btn btn-outline-secondary me-3"
+            onClick={toggleTheme}
+            title={isDarkMode ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
+          >
+            {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+
           <form onSubmit={handleSearch} className="d-flex me-3" role="search">
             <div className="input-group">
               <span className="input-group-text bg-light border-end-0"><Search size={16} /></span>
@@ -57,9 +68,10 @@ export default function NavBar() {
             </div>
           </form>
 
-          <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-3">
             {user ? (
               <>
+                <Notifications />
                 <span className="text-secondary small">Xin chào, <strong>{user.name}</strong></span>
                 <button onClick={logout} className="btn btn-outline-secondary btn-sm">Đăng xuất</button>
               </>

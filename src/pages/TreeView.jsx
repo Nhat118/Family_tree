@@ -1,15 +1,29 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTree } from "../contexts/TreeContext";
+import AsyncContent from "../components/AsyncContent";
+import useAsyncTask from "../hooks/useAsyncTask";
 
 export default function TreeView() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { trees, loading, addTree, editTree, removeTree } = useTree();
+  const { trees, loading: initialLoading, addTree, editTree, removeTree } = useTree();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ title: "", coverUrl: "", description: "" });
   const memberCounts = useMemo(() => Object.fromEntries(trees.map(t => [t.id, t.members?.length || 0])), [trees]);
+  
+  const { isLoading: isSubmitting, error: submitError, execute: submitForm } = useAsyncTask(
+    async (e) => {
+      e.preventDefault();
+      if (editing) {
+        await editTree(editing.id, form);
+      } else {
+        await addTree(form);
+      }
+      setShowForm(false);
+    }
+  );
 
   function openAdd() {
     setEditing(null);
@@ -21,20 +35,13 @@ export default function TreeView() {
     setForm({ title: t.title || "", coverUrl: t.coverUrl || "", description: t.description || "" });
     setShowForm(true);
   }
-  async function submitForm(e) {
-    e.preventDefault();
-    if (editing) {
-      await editTree(editing.id, form);
-    } else {
-      await addTree(form);
+  const { isLoading: isDeleting, error: deleteError, execute: executeDelete } = useAsyncTask(
+    async (tree) => {
+      if (window.confirm(`Xóa gia phả "${tree.title}"?`)) {
+        await removeTree(tree.id);
+      }
     }
-    setShowForm(false);
-  }
-  async function confirmDelete(t) {
-    if (window.confirm(`Xóa gia phả "${t.title}"?`)) {
-      await removeTree(t.id);
-    }
-  }
+  );
 
   const q = new URLSearchParams(location.search).get('search') || '';
   const filteredTrees = useMemo(() => {
@@ -51,13 +58,24 @@ export default function TreeView() {
     <div className="container py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h2 className="h5 mb-0">Danh sách gia phả</h2>
-        <button className="btn btn-primary" onClick={openAdd}>Thêm gia phả</button>
+        <button 
+          className="btn btn-primary" 
+          onClick={openAdd}
+          disabled={isSubmitting}
+        >
+          Thêm gia phả
+        </button>
       </div>
 
-      {loading && <div className="alert alert-info">Đang tải...</div>}
-
-      <div className="row g-3">
-        {filteredTrees.map((t) => (
+      <AsyncContent
+        isLoading={initialLoading}
+        error={submitError || deleteError}
+        onRetry={() => window.location.reload()}
+        loadingText="Đang tải danh sách gia phả..."
+        errorText="Không thể tải danh sách gia phả"
+      >
+        <div className="row g-3">
+          {filteredTrees.map((t) => (
           <div className="col-12 col-md-6 col-lg-4" key={t.id}>
             <div className="card h-100">
               {t.coverUrl ? (
@@ -74,17 +92,17 @@ export default function TreeView() {
                   <div className="btn-group">
                     <button className="btn btn-sm btn-outline-primary" onClick={() => navigate(`/tree/${t.id}`)}>Phả đồ</button>
                     <button className="btn btn-sm btn-outline-secondary" onClick={() => openEdit(t)}>Sửa</button>
-                    <button className="btn btn-sm btn-outline-danger" onClick={() => confirmDelete(t)}>Xóa</button>
+                    <button className="btn btn-sm btn-outline-danger" onClick={() => executeDelete(t)}>Xóa</button>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         ))}
-      </div>
+  </div>
+  </AsyncContent>
 
-
-      {showForm && (
+  {showForm && (
         <div className="modal fade show" style={{ display: 'block' }} tabIndex="-1" role="dialog">
           <div className="modal-dialog" role="document">
             <div className="modal-content">

@@ -1,6 +1,10 @@
-import { Routes, Route } from "react-router-dom"; // chỉ cần Routes, Route
+import { Routes, Route } from "react-router-dom";
 import Nav from "./components/NavBar";
 import { useAuth } from "./contexts/AuthContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import { SocialProvider } from "./contexts/SocialContext";
+import ErrorBoundary from "./components/ErrorBoundary";
+import "./styles/theme.css";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -14,84 +18,47 @@ import AdminTrees from "./pages/Admin/TreesManager";
 import AdminReports from "./pages/Admin/Reports";
 import RequireAuth from "./components/RequireAuth";
 import Profile from "./pages/Profile";
+import NotFound from "./pages/NotFound";
 
 export default function App() {
   const { user } = useAuth();
 
   return (
-    <div className="app-container">
-      <Nav user={user} />
-      <main className="container py-4 app-main">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/tree" element={<TreeView />} />
-          <Route path="/tree/:treeId" element={<FamilyTree />} />
+    <ErrorBoundary>
+      <ThemeProvider>
+        <SocialProvider>
+          <div className="app-container">
+            <Nav user={user} />
+            <main className="container py-4 app-main">
+              <Routes>
+                {/* Public routes */}
+                <Route path="/" element={<Home />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                
+                {/* Protected routes */}
+                <Route element={<RequireAuth />}>
+                  <Route path="/tree" element={<TreeView />} />
+                  <Route path="/tree/:treeId" element={<FamilyTree />} />
+                  <Route path="/tree/:treeId/member/:memberId" element={<MemberEditor />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/profile" element={<Profile />} />
+                  
+                  {/* Admin routes */}
+                  <Route path="/admin" element={<Admin />}>
+                    <Route path="users" element={<AdminUsers />} />
+                    <Route path="trees" element={<AdminTrees />} />
+                    <Route path="reports" element={<AdminReports />} />
+                  </Route>
+                </Route>
 
-          <Route
-            path="/dashboard"
-            element={
-              <RequireAuth>
-                <Dashboard />
-              </RequireAuth>
-            }
-          />
-
-          <Route
-            path="/profile"
-            element={
-              <RequireAuth>
-                <Profile />
-              </RequireAuth>
-            }
-          />
-
-          <Route
-            path="/member/edit"
-            element={
-              <RequireAuth>
-                <MemberEditor />
-              </RequireAuth>
-            }
-          />
-
-          <Route
-            path="/admin"
-            element={
-              <RequireAuth role="admin">
-                <Admin />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <RequireAuth role="admin">
-                <AdminUsers />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/admin/trees"
-            element={
-              <RequireAuth role="admin">
-                <AdminTrees />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/admin/reports"
-            element={
-              <RequireAuth role="admin">
-                <AdminReports />
-              </RequireAuth>
-            }
-          />
-
-          <Route path="*" element={<div className="p-3">Trang không tìm thấy</div>} />
-        </Routes>
-      </main>
-    </div>
+                {/* 404 route */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </main>
+          </div>
+        </SocialProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

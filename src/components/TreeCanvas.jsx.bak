@@ -100,9 +100,137 @@ export default function TreeCanvas({ members = [], relations = [] }) {
   const [ageFilter, setAgeFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Filter states
+  const [genderFilter, setGenderFilter] = useState('all');
+  const [ageFilter, setAgeFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Display options
+  const [showControls, setShowControls] = useState(true);
+  const [showMinimap, setShowMinimap] = useState(true);
+  const [showGrid, setShowGrid] = useState(true);
+  const [showRelationLabels, setShowRelationLabels] = useState(true);
+  const [maxGenerations, setMaxGenerations] = useState(0); // 0 = show all
+  
+  // Filter states
+  const [genderFilter, setGenderFilter] = useState('all');
+  const [ageFilter, setAgeFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Zoom and pan state
+  const [viewPort, setViewPort] = useState({ zoom: 1, x: 0, y: 0 });
+  
   // ReactFlow instance
   const { fitView, zoomIn, zoomOut, setCenter } = useReactFlow();
   const store = useStoreApi();
+
+  // Filter functions
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return null;
+    const birth = new Date(birthDate);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const filterByGender = (member) => {
+    if (genderFilter === 'all') return true;
+    return member.gender === genderFilter;
+  };
+
+  const filterByAge = (member) => {
+    if (ageFilter === 'all') return true;
+    const age = calculateAge(member.birthDate);
+    if (!age) return true;
+    
+    switch (ageFilter) {
+      case 'children':
+        return age <= 18;
+      case 'adults':
+        return age > 18 && age < 60;
+      case 'seniors':
+        return age >= 60;
+      default:
+        return true;
+    }
+  };
+
+  const filterBySearch = (member) => {
+    if (!searchTerm) return true;
+    return member.name.toLowerCase().includes(searchTerm.toLowerCase());
+  };
+
+  const handleSearch = (term) => {
+    setSearchTerm(term);
+  };
+
+  const handleReset = () => {
+    setViewPort({ zoom: 1, x: 0, y: 0 });
+    setGenderFilter('all');
+    setAgeFilter('all');
+    setSearchTerm('');
+    setMaxGenerations(0);
+    fitView();
+  };
+
+  const onAddClick = useCallback((memberId) => {
+    setTargetId(Number(memberId));
+    setRelationType("child");
+    setForm({ name: "", gender: "", birthDate: "", deathDate: "", avatarUrl: "" });
+    setShowForm(true);
+  }, []);
+
+  const computeBinaryLayout = useCallback(() => {
+    const parentToChildren = new Map();
+    const childHasParent = new Set();
+    relations.filter(r => r.type === 'parent').forEach(r => {
+      const list = parentToChildren.get(r.from) || [];
+      list.push(r.to);
+      parentToChildren.set(r.from, list);
+      childHasParent.add(r.to);
+    });
+    const allIds = members.map(m => m.id);
+    const roots = allIds.filter(id => !childHasParent.has(id));
+    const levelGap = 150;
+    const nodeGap = 240;
+    let nextX = 0;
+    const pos = new Map();
+
+    function dfs(nodeId, depth) {
+      const children = (parentToChildren.get(nodeId) || []).slice(0, 2); // limit to 2 for binary style
+      if (children.length === 0) {
+        const x = nextX;
+        nextX += nodeGap;
+        pos.set(nodeId, { x, y: depth * levelGap });
+        return x;
+      }
+      const childXs = children.map(childId => dfs(childId, depth + 1));
+      const x = Math.round((Math.min(...childXs) + Math.max(...childXs)) / 2);
+      pos.set(nodeId, { x, y: depth * levelGap });
+      return x;
+    }
+
+    if (roots.length === 0) {
+      // fallback: treat first as root
+      roots.push(allIds[0]);
+    }
+    roots.forEach(rootId => dfs(rootId, 0));
+    // place spouses next to their partner if missing position
+    relations.filter(r => r.type === 'spouse').forEach(({ from, to }) => {
+      if (pos.has(from) && !pos.has(to)) {
+        const p = pos.get(from);
+        pos.set(to, { x: p.x + 160, y: p.y });
+      } else if (!pos.has(from) && pos.has(to)) {
+        const p = pos.get(to);
+        pos.set(from, { x: p.x - 160, y: p.y });
+      }
+    });
+    return pos;
+  }, [members, relations]);
 
   const calculateAge = useCallback((birthDate) => {
     if (!birthDate) return null;
@@ -150,62 +278,6 @@ export default function TreeCanvas({ members = [], relations = [] }) {
     return true;
   }, [genderFilter, ageFilter, searchTerm, calculateAge]);
 
-  const onAddClick = useCallback((memberId) => {
-    setTargetId(Number(memberId));
-    setRelationType("child");
-    setForm({ name: "", gender: "", birthDate: "", deathDate: "", avatarUrl: "" });
-    setShowForm(true);
-  }, []);
-
-  const computeBinaryLayout = useCallback(() => {
-    const parentToChildren = new Map();
-    const childHasParent = new Set();
-    relations.filter(r => r.type === 'parent').forEach(r => {
-      const list = parentToChildren.get(r.from) || [];
-      list.push(r.to);
-      parentToChildren.set(r.from, list);
-      childHasParent.add(r.to);
-    });
-    
-    const filteredMembers = members.filter(applyFilters);
-    const allIds = filteredMembers.map(m => m.id);
-    const roots = allIds.filter(id => !childHasParent.has(id));
-    
-    const levelGap = 150;
-    const nodeGap = 240;
-    let nextX = 0;
-    const pos = new Map();
-
-    function dfs(nodeId, depth) {
-      if (maxGenerations > 0 && depth >= maxGenerations) {
-        return nextX;
-      }
-
-      const children = (parentToChildren.get(nodeId) || [])
-        .filter(id => filteredMembers.some(m => m.id === id))
-        .slice(0, 2); // limit to 2 for binary style
-      
-      if (children.length === 0) {
-        const x = nextX;
-        nextX += nodeGap;
-        pos.set(nodeId, { x, y: depth * levelGap });
-        return x;
-      }
-      
-      const childXs = children.map(childId => dfs(childId, depth + 1));
-      const x = Math.round((Math.min(...childXs) + Math.max(...childXs)) / 2);
-      pos.set(nodeId, { x, y: depth * levelGap });
-      return x;
-    }
-
-    if (roots.length === 0 && filteredMembers.length > 0) {
-      roots.push(allIds[0]);
-    }
-    roots.forEach(rootId => dfs(rootId, 0));
-
-    return pos;
-  }, [members, relations, applyFilters, maxGenerations]);
-
   const nodes = useMemo(() => {
     const marriedMembers = new Set();
     relations.filter(r => r.type === 'spouse').forEach(r => {
@@ -214,61 +286,65 @@ export default function TreeCanvas({ members = [], relations = [] }) {
     });
 
     const filteredMembers = members.filter(applyFilters);
-    const positions = computeBinaryLayout();
     
-    return filteredMembers.map((member) => ({
-      id: String(member.id),
+    if (layoutMode === 'binary') {
+      const pos = computeBinaryLayout();
+      return filteredMembers.map((m) => ({
+        id: String(m.id),
+        type: 'member',
+        data: {
+          label: m.name,
+          birthDate: m.birthDate,
+          deathDate: m.deathDate,
+          gender: m.gender,
+          avatarUrl: m.avatarUrl,
+          onAddClick,
+          isMarried: marriedMembers.has(m.id)
+        },
+        position: pos.get(m.id) || { x: 0, y: 0 }
+      }));
+    }
+    return members.map((m, idx) => ({
+      id: String(m.id),
       type: 'member',
-      position: positions.get(member.id) || { x: 0, y: 0 },
       data: {
-        ...member,
-        label: member.name,
-        onAddClick: onAddClick,
-        isMarried: marriedMembers.has(member.id),
+        label: m.name,
+        birthDate: m.birthDate,
+        deathDate: m.deathDate,
+        gender: m.gender,
+        avatarUrl: m.avatarUrl,
+        onAddClick,
+        isMarried: marriedMembers.has(m.id)
       },
+      position: { x: idx * 220, y: 60 },
     }));
-  }, [members, relations, applyFilters, computeBinaryLayout, onAddClick]);
+  }, [members, onAddClick, layoutMode, relations, computeBinaryLayout]);
 
-  const edges = useMemo(() => {
-    const filteredIds = new Set(nodes.map(n => n.id));
-    
-    return relations
-      .filter(r => 
-        (r.type === 'parent' || r.type === 'spouse') &&
-        filteredIds.has(String(r.from)) &&
-        filteredIds.has(String(r.to))
-      )
-      .map((r, idx) => ({
-        id: `e${idx}`,
+  const edges = useMemo(() => relations
+    .filter(r => r.type === 'parent' || r.type === 'spouse')
+    .map((r, idx) => {
+      const label = showRelationLabels ? RelationshipLabels[r.type] : '';
+      return {
+        id: "e" + idx,
         source: String(r.from),
         target: String(r.to),
         type: 'floating',
-        data: { 
-          label: showRelationLabels ? RelationshipLabels[r.type] : '',
-          style: {
-            strokeWidth: 2,
-            stroke: r.type === 'spouse' ? '#666' : '#333',
-            strokeDasharray: r.type === 'spouse' ? '4 4' : undefined
-          }
+        data: { label },
+        animated: false,
+        style: {
+          strokeWidth: 2,
+          stroke: r.type === 'spouse' ? '#666' : '#333',
+          strokeDasharray: r.type === 'spouse' ? '4 4' : undefined
         }
-      }));
-  }, [nodes, relations, showRelationLabels]);
+      };
+    }), [relations, showRelationLabels]);
 
   const nodeTypes = useMemo(() => ({ member: MemberNode }), []);
   const edgeTypes = useMemo(() => ({ floating: EdgeWithLabel }), []);
 
-  const handleReset = useCallback(() => {
-    setGenderFilter('all');
-    setAgeFilter('all');
-    setSearchTerm('');
-    setMaxGenerations(0);
-    fitView();
-  }, [fitView]);
-
   async function submit(e) {
     e.preventDefault();
     if (!activeTree) return;
-    
     const nextId = members.length ? Math.max(...members.map(m => m.id)) + 1 : 1;
     const newMember = {
       id: nextId,
@@ -278,10 +354,8 @@ export default function TreeCanvas({ members = [], relations = [] }) {
       deathDate: form.deathDate || '',
       avatarUrl: form.avatarUrl || ''
     };
-    
     const nextMembers = [...members, newMember];
     let nextRelations = [...relations];
-    
     if (relationType === 'child') {
       nextRelations.push({ from: targetId, to: newMember.id, type: 'parent' });
     } else if (relationType === 'spouse') {
@@ -289,45 +363,133 @@ export default function TreeCanvas({ members = [], relations = [] }) {
     } else if (relationType === 'parent') {
       nextRelations.push({ from: newMember.id, to: targetId, type: 'parent' });
     }
-    
     await editTree(activeTree.id, { members: nextMembers, relations: nextRelations });
     setShowForm(false);
   }
 
+  // Handle viewport changes
+  const onMoveEnd = useCallback((event, viewport) => {
+    setViewPort(viewport);
+  }, []);
+
+  // Center view on a node
+  const centerNode = useCallback((nodeId) => {
+    const node = store.getState().nodeInternals.get(nodeId);
+    if (node) {
+      const x = node.position.x + node.width / 2;
+      const y = node.position.y + node.height / 2;
+      setCenter(x, y, { zoom: 1.5, duration: 1000 });
+    }
+  }, [store, setCenter]);
+
   return (
-    <div style={{ width: '100%', height: '100%' }}>
+    <div className="border rounded bg-white" style={{ height: 540 }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        onMoveEnd={onMoveEnd}
         fitView
       >
         {showGrid && <Background />}
         {showControls && <Controls />}
-        {showMinimap && <MiniMap />}
-        
-        <Panel position="top-right">
-          <TreeControls
-            showControls={showControls}
-            setShowControls={setShowControls}
-            showMinimap={showMinimap}
-            setShowMinimap={setShowMinimap}
-            showGrid={showGrid}
-            setShowGrid={setShowGrid}
-            showRelationLabels={showRelationLabels}
-            setShowRelationLabels={setShowRelationLabels}
-            maxGenerations={maxGenerations}
-            setMaxGenerations={setMaxGenerations}
-            genderFilter={genderFilter}
-            setGenderFilter={setGenderFilter}
-            ageFilter={ageFilter}
-            setAgeFilter={setAgeFilter}
-            onSearch={setSearchTerm}
-            onFitView={fitView}
-            onCenter={() => setCenter(0, 0, 1)}
-            onReset={handleReset}
+        {showMinimap && (
+          <MiniMap
+            nodeStrokeColor={(n) => {
+              if (n.style?.background) return n.style.background;
+              return '#fff';
+            }}
+            nodeColor={(n) => {
+              if (n.style?.background) return n.style.background;
+              return '#fff';
+            }}
+            nodeBorderRadius={2}
           />
+        )}
+        
+        <Panel position="top-right" className="bg-white p-2 rounded shadow-sm">
+          <div className="d-flex flex-column gap-2">
+            <div className="btn-group btn-group-sm">
+              <button
+                className="btn btn-outline-secondary"
+                onClick={() => zoomIn()}
+                title="Phóng to"
+              >
+                <i className="bi bi-zoom-in"></i>
+              </button>
+              <button
+                className="btn btn-outline-secondary"
+                onClick={() => zoomOut()}
+                title="Thu nhỏ"
+              >
+                <i className="bi bi-zoom-out"></i>
+              </button>
+              <button
+                className="btn btn-outline-secondary"
+                onClick={() => fitView()}
+                title="Vừa khung hình"
+              >
+                <i className="bi bi-arrows-fullscreen"></i>
+              </button>
+            </div>
+
+            <div className="form-check form-switch">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                checked={showControls}
+                onChange={(e) => setShowControls(e.target.checked)}
+              />
+              <label className="form-check-label small">Hiện điều khiển</label>
+            </div>
+
+            <div className="form-check form-switch">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                checked={showMinimap}
+                onChange={(e) => setShowMinimap(e.target.checked)}
+              />
+              <label className="form-check-label small">Hiện bản đồ thu nhỏ</label>
+            </div>
+
+            <div className="form-check form-switch">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                checked={showGrid}
+                onChange={(e) => setShowGrid(e.target.checked)}
+              />
+              <label className="form-check-label small">Hiện lưới</label>
+            </div>
+
+            <div className="form-check form-switch">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                checked={showRelationLabels}
+                onChange={(e) => setShowRelationLabels(e.target.checked)}
+              />
+              <label className="form-check-label small">Hiện nhãn quan hệ</label>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label small">Số thế hệ hiển thị</label>
+              <select
+                className="form-select form-select-sm"
+                value={maxGenerations}
+                onChange={(e) => setMaxGenerations(Number(e.target.value))}
+              >
+                <option value="0">Tất cả</option>
+                <option value="1">1 thế hệ</option>
+                <option value="2">2 thế hệ</option>
+                <option value="3">3 thế hệ</option>
+                <option value="4">4 thế hệ</option>
+                <option value="5">5 thế hệ</option>
+              </select>
+            </div>
+          </div>
         </Panel>
       </ReactFlow>
 
