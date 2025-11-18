@@ -12,13 +12,13 @@ export default function MemberList({ members = [], relations = [], onEditMember,
   const getMemberRelations = (memberId) => {
     const memberRelations = relations.filter(r => r.from === memberId || r.to === memberId);
     const spouseRelations = memberRelations.filter(r => r.type === 'spouse');
-    const parentRelations = memberRelations.filter(r => r.type === 'parent' && r.from === memberId);
-    const childRelations = memberRelations.filter(r => r.type === 'parent' && r.to === memberId);
+    const parentRelations = memberRelations.filter(r => r.type === 'parent' && r.to === memberId);
+    const childRelations = memberRelations.filter(r => r.type === 'parent' && r.from === memberId);
     
     return {
       spouses: spouseRelations.map(r => members.find(m => m.id === (r.from === memberId ? r.to : r.from))).filter(Boolean),
-      parents: parentRelations.map(r => members.find(m => m.id === r.to)).filter(Boolean),
-      children: childRelations.map(r => members.find(m => m.id === r.from)).filter(Boolean)
+      parents: parentRelations.map(r => members.find(m => m.id === r.from)).filter(Boolean),
+      children: childRelations.map(r => members.find(m => m.id === r.to)).filter(Boolean)
     };
   };
 

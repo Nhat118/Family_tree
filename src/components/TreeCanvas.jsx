@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
-import ReactFlow, { Background } from "reactflow";
+import ReactFlow, { Background, MarkerType, Handle } from "reactflow";
 import "reactflow/dist/style.css";
 import { useTree } from "../contexts/TreeContext";
 
@@ -68,6 +68,9 @@ function MemberNode({ id, data }) {
           </div>
         </div>
       </div>
+      {/* Nút/điểm kết nối để kéo dây nối sang người khác */}
+      <Handle type="source" position="right" id="out" style={{ background: accent, width: 10, height: 10 }} />
+      <Handle type="target" position="left" id="in" style={{ background: accent, width: 10, height: 10 }} />
     </div>
   );
 }
@@ -78,6 +81,8 @@ export default function TreeCanvas({ members = [], relations = [] }) {
   const [targetId, setTargetId] = useState(null);
   const [relationType, setRelationType] = useState("child"); // child | spouse | parent
   const [form, setForm] = useState({ name: "", gender: "", birthDate: "", deathDate: "", avatarUrl: "" });
+  const [recentEdge, setRecentEdge] = useState(null); // { from, to, type }
+  const [manualEdges, setManualEdges] = useState([]); // các cạnh vẽ thủ công bằng kéo thả
 
   const onAddClick = useCallback((memberId) => {
     setTargetId(Number(memberId));
@@ -103,7 +108,11 @@ export default function TreeCanvas({ members = [], relations = [] }) {
     const pos = new Map();
 
     function dfs(nodeId, depth) {
-      const children = (parentToChildren.get(nodeId) || []).slice(0, 2);
+      // If node already positioned (e.g., shared child with two parents), reuse its x to avoid re-traversal
+      if (pos.has(nodeId)) {
+        return pos.get(nodeId).x;
+      }
+      const children = (parentToChildren.get(nodeId) || []);
       if (children.length === 0) {
         const x = nextX;
         nextX += nodeGap;
@@ -166,20 +175,67 @@ export default function TreeCanvas({ members = [], relations = [] }) {
         isMarried: marriedMembers.has(m.id),
         onDivorceClick: handleDivorce
       },
-      position: pos.get(m.id) || { x: 0, y: 0 }
+      // Ưu tiên vị trí đã lưu, nếu chưa có thì dùng layout tự động
+      position: (activeTree?.positions && activeTree.positions[m.id]) || pos.get(m.id) || { x: 0, y: 0 }
     }));
-  }, [members, relations, computeBinaryLayout, onAddClick, handleDivorce]);
+  }, [members, relations, computeBinaryLayout, onAddClick, handleDivorce, activeTree]);
 
-  const edges = useMemo(() => relations
-    .filter(r => r.type === 'parent' || r.type === 'spouse' || r.type === 'divorced')
-    .map((r, idx) => ({
+  const handleNodeDragStop = useCallback(async (_e, node) => {
+    if (!activeTree) return;
+    const memberId = Number(node.id);
+    const nextPositions = { ...(activeTree.positions || {}) };
+    nextPositions[memberId] = { x: node.position.x, y: node.position.y };
+    await editTree(activeTree.id, { positions: nextPositions });
+  }, [activeTree, editTree]);
+
+  const onConnect = useCallback((params) => {
+    const from = Number(params.source);
+    const to = Number(params.target);
+    // Vẽ đường chỉ thủ công (không lưu vào dữ liệu cây)
+    const e = { from, to, type: 'manual' };
+    setManualEdges((prev) => [...prev, e]);
+    setRecentEdge(e);
+    setTimeout(() => setRecentEdge(null), 2500);
+  }, []);
+
+  const edges = useMemo(() => {
+    // Bắt đầu từ danh sách quan hệ hiện có
+    const base = relations.filter(r => r.type === 'parent' || r.type === 'spouse' || r.type === 'divorced');
+    // Thêm các cạnh thủ công (manual) để hiển thị cùng
+    const extended = [...base, ...manualEdges];
+    // Đảm bảo cạnh vừa tạo luôn được render ngay cả khi state chưa kịp cập nhật
+    const list = recentEdge && !extended.some(r => r.from === recentEdge.from && r.to === recentEdge.to && r.type === recentEdge.type)
+      ? [...extended, recentEdge]
+      : extended;
+
+    return list.map((r, idx) => ({
       id: "e" + idx,
       source: String(r.from),
       target: String(r.to),
       type: r.type === 'parent' ? 'smoothstep' : 'straight',
-      animated: false,
-      style: r.type === 'spouse' ? { strokeDasharray: '4 4' } : (r.type === 'divorced' ? { stroke: '#dc3545', strokeDasharray: '6 4' } : undefined)
-    })), [relations]);
+      // Nếu là cạnh vừa tạo, tô nổi bật và animate trong thời gian ngắn
+      animated: recentEdge && recentEdge.from === r.from && recentEdge.to === r.to && recentEdge.type === r.type ? true : false,
+      style: (() => {
+        // Ưu tiên highlight cạnh vừa tạo (mọi loại)
+        if (recentEdge && recentEdge.from === r.from && recentEdge.to === r.to && recentEdge.type === r.type) {
+          return { stroke: '#0d6efd', strokeWidth: 4 };
+        }
+        // Mặc định các loại cạnh khác
+        if (r.type === 'spouse') return { strokeDasharray: '4 4', stroke: '#6c757d' };
+        if (r.type === 'divorced') return { stroke: '#dc3545', strokeDasharray: '6 4' };
+        if (r.type === 'manual') return { stroke: '#0d6efd', strokeWidth: 2.5 };
+        if (r.type === 'parent') return { stroke: '#6c757d', strokeWidth: 2 };
+        return { stroke: '#6c757d' };
+      })(),
+      markerEnd: (() => {
+        // Gắn mũi tên cho quan hệ cha–con để dễ nhận biết hướng
+        if (r.type === 'parent' || r.type === 'manual' || (recentEdge && recentEdge.from === r.from && recentEdge.to === r.to && recentEdge.type === r.type)) {
+          return { type: MarkerType.ArrowClosed, color: '#0d6efd' };
+        }
+        return undefined;
+      })()
+    }));
+  }, [relations, manualEdges, recentEdge]);
 
   const nodeTypes = useMemo(() => ({ member: MemberNode }), []);
 
@@ -197,14 +253,23 @@ export default function TreeCanvas({ members = [], relations = [] }) {
     };
     const nextMembers = [...members, newMember];
     let nextRelations = [...relations];
+    let createdEdge = null;
     if (relationType === 'child') {
-      nextRelations.push({ from: targetId, to: newMember.id, type: 'parent' });
+      createdEdge = { from: targetId, to: newMember.id, type: 'parent' };
+      nextRelations.push(createdEdge);
     } else if (relationType === 'spouse') {
-      nextRelations.push({ from: targetId, to: newMember.id, type: 'spouse' });
+      createdEdge = { from: targetId, to: newMember.id, type: 'spouse' };
+      nextRelations.push(createdEdge);
     } else if (relationType === 'parent') {
-      nextRelations.push({ from: newMember.id, to: targetId, type: 'parent' });
+      createdEdge = { from: newMember.id, to: targetId, type: 'parent' };
+      nextRelations.push(createdEdge);
     }
     await editTree(activeTree.id, { members: nextMembers, relations: nextRelations });
+    if (createdEdge) {
+      setRecentEdge(createdEdge);
+      // Xóa highlight sau 2.5 giây
+      setTimeout(() => setRecentEdge(null), 2500);
+    }
     setShowForm(false);
   }
 
@@ -212,7 +277,14 @@ export default function TreeCanvas({ members = [], relations = [] }) {
 
   return (
     <div className="border rounded bg-white" style={{ height: 540 }}>
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        fitView
+        onNodeDragStop={handleNodeDragStop}
+        onConnect={onConnect}
+      >
         <Background color="#eee" gap={16} />
       </ReactFlow>
 
