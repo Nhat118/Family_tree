@@ -4,35 +4,69 @@ import "reactflow/dist/style.css";
 import { useTree } from "../contexts/TreeContext";
 
 function MemberNode({ id, data }) {
-  const { onAddClick, isMarried } = data;
+  const { onAddClick, isMarried, onDivorceClick } = data;
+  const isMale = data.gender === 'male';
+  const accent = isMale ? '#0d6efd' : '#d63384'; // blue / pink
+  const accentSoft = isMale ? '#e7f1ff' : '#fde7f3';
+  const avatarBg = isMale ? '#cfe2ff' : '#ffd6e7';
+
+  // Render full dates (DD/MM/YYYY - DD/MM/YYYY)
+  const fmt = (d) => {
+    if (!d) return '';
+    // Expecting ISO yyyy-mm-dd; fallback to raw string
+    const s = String(d);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      const [y, m, day] = s.split('T')[0].split('-');
+      return `${day}/${m}/${y}`;
+    }
+    return s;
+  };
+  const dateLine = `${fmt(data.birthDate) || '?'}` + (data.deathDate ? ` - ${fmt(data.deathDate)}` : '');
+
   return (
-    <div className="card shadow-sm" style={{ width: 180 }}>
-      <div className="card-body p-2">
+    <div
+      className="shadow-sm"
+      style={{
+        width: 200,
+        background: '#fff',
+        borderRadius: 12,
+        border: `2px solid ${accentSoft}`,
+      }}
+    >
+      <div className="p-2">
         <div className="d-flex align-items-center">
-          {/* -- THAY ĐỔI BẮT ĐẦU -- */}
           {data.avatarUrl ? (
-            <img src={data.avatarUrl} alt={data.label} className="rounded-circle me-2" style={{ width: 32, height: 32, objectFit: 'cover' }} />
+            <img src={data.avatarUrl} alt={data.label} className="rounded-circle me-2" style={{ width: 36, height: 36, objectFit: 'cover', border: `2px solid ${accentSoft}` }} />
           ) : (
-            <div className={`rounded-circle bg-light me-2 d-flex align-items-center justify-content-center text-muted`} style={{ width: 32, height: 32, fontSize: '1.2rem' }}>
-              {data.gender === 'male' ? '👨' : data.gender === 'female' ? '👩' : '👤'}
+            <div
+              className="rounded-circle me-2 d-flex align-items-center justify-content-center"
+              style={{ width: 36, height: 36, background: avatarBg, color: '#fff', fontSize: '1.1rem' }}
+            >
+              {isMale ? '👨' : data.gender === 'female' ? '👩' : '👤'}
             </div>
           )}
           <div className="flex-grow-1">
-            <div className="fw-semibold small text-truncate" title={data.label}>{data.label}</div>
-            {(data.birthDate || data.deathDate) && (
-              <div className="text-muted small" style={{ lineHeight: 1.2 }}>
-                {data.birthDate ? data.birthDate : '?'}
-                {data.deathDate ? ` - ${data.deathDate}` : ''}
-              </div>
+            <div className="fw-semibold text-truncate" title={data.label} style={{ fontSize: 14 }}>{data.label}</div>
+            <div className="small" style={{ color: '#6c757d', lineHeight: 1.2 }}>{dateLine}</div>
+          </div>
+        </div>
+
+        <div className="d-flex align-items-center justify-content-between mt-2">
+          <span
+            className="badge rounded-pill"
+            style={{ background: accentSoft, color: accent, border: `1px solid ${accent}`, fontWeight: 600 }}
+          >
+            {isMale ? 'Nam' : data.gender === 'female' ? 'Nữ' : 'Khác'}
+          </span>
+          <div className="d-flex gap-2">
+            {!isMarried && (
+              <button className="btn btn-sm btn-outline-primary" onClick={() => onAddClick(id)} title="Thêm thành viên">+</button>
+            )}
+            {isMarried && (
+              <button className="btn btn-sm btn-outline-danger" onClick={() => onDivorceClick(id)} title="Ly hôn">Ly hôn</button>
             )}
           </div>
-          {/* -- THAY ĐỔI KẾT THÚC -- */}
         </div>
-        {!isMarried && (
-          <div className="d-flex justify-content-end mt-2">
-            <button className="btn btn-sm btn-outline-primary" onClick={() => onAddClick(id)} title="Thêm thành viên">+</button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -44,7 +78,6 @@ export default function TreeCanvas({ members = [], relations = [] }) {
   const [targetId, setTargetId] = useState(null);
   const [relationType, setRelationType] = useState("child"); // child | spouse | parent
   const [form, setForm] = useState({ name: "", gender: "", birthDate: "", deathDate: "", avatarUrl: "" });
-  const [layoutMode] = useState('binary'); // fixed binary layout per request
 
   const onAddClick = useCallback((memberId) => {
     setTargetId(Number(memberId));
@@ -54,7 +87,6 @@ export default function TreeCanvas({ members = [], relations = [] }) {
   }, []);
 
   const computeBinaryLayout = useCallback(() => {
-    // ... (logic layout không đổi) ...
     const parentToChildren = new Map();
     const childHasParent = new Set();
     relations.filter(r => r.type === 'parent').forEach(r => {
@@ -71,7 +103,7 @@ export default function TreeCanvas({ members = [], relations = [] }) {
     const pos = new Map();
 
     function dfs(nodeId, depth) {
-      const children = (parentToChildren.get(nodeId) || []).slice(0, 2); // limit to 2 for binary style
+      const children = (parentToChildren.get(nodeId) || []).slice(0, 2);
       if (children.length === 0) {
         const x = nextX;
         nextX += nodeGap;
@@ -84,13 +116,12 @@ export default function TreeCanvas({ members = [], relations = [] }) {
       return x;
     }
 
-    if (roots.length === 0) {
-      // fallback: treat first as root
+    if (roots.length === 0 && allIds.length) {
       roots.push(allIds[0]);
     }
     roots.forEach(rootId => dfs(rootId, 0));
-    // place spouses next to their partner if missing position
-    relations.filter(r => r.type === 'spouse').forEach(({ from, to }) => {
+    // place spouses near their partner if missing
+    relations.filter(r => r.type === 'spouse' || r.type === 'divorced').forEach(({ from, to }) => {
       if (pos.has(from) && !pos.has(to)) {
         const p = pos.get(from);
         pos.set(to, { x: p.x + 160, y: p.y });
@@ -102,56 +133,52 @@ export default function TreeCanvas({ members = [], relations = [] }) {
     return pos;
   }, [members, relations]);
 
+  const handleDivorce = useCallback(async (memberId) => {
+    if (!activeTree) return;
+    if (!window.confirm('Xác nhận ly hôn?')) return;
+    const nextRelations = relations.map(r => {
+      if (r.type === 'spouse' && (r.from === memberId || r.to === memberId)) {
+        return { ...r, type: 'divorced' };
+      }
+      return r;
+    });
+    await editTree(activeTree.id, { relations: nextRelations });
+  }, [relations, editTree, activeTree]);
+
   const nodes = useMemo(() => {
-    // Tạo map để kiểm tra ai đã kết hôn
     const marriedMembers = new Set();
     relations.filter(r => r.type === 'spouse').forEach(r => {
       marriedMembers.add(r.from);
       marriedMembers.add(r.to);
     });
 
-    if (layoutMode === 'binary') {
-      const pos = computeBinaryLayout();
-      return members.map((m) => ({
-        id: String(m.id),
-        type: 'member',
-        data: {
-          label: m.name,
-          birthDate: m.birthDate,
-          deathDate: m.deathDate,   // <-- THÊM MỚI
-          gender: m.gender,       // <-- THÊM MỚI
-          avatarUrl: m.avatarUrl, // <-- THÊM MỚI
-          onAddClick,
-          isMarried: marriedMembers.has(m.id)
-        },
-        position: pos.get(m.id) || { x: 0, y: 0 }
-      }));
-    }
-    return members.map((m, idx) => ({
+    const pos = computeBinaryLayout();
+    return members.map((m) => ({
       id: String(m.id),
       type: 'member',
       data: {
         label: m.name,
         birthDate: m.birthDate,
-        deathDate: m.deathDate,   // <-- THÊM MỚI
-        gender: m.gender,       // <-- THÊM MỚI
-        avatarUrl: m.avatarUrl, // <-- THÊM MỚI
+        deathDate: m.deathDate,
+        gender: m.gender,
+        avatarUrl: m.avatarUrl,
         onAddClick,
-        isMarried: marriedMembers.has(m.id)
+        isMarried: marriedMembers.has(m.id),
+        onDivorceClick: handleDivorce
       },
-      position: { x: idx * 220, y: 60 },
+      position: pos.get(m.id) || { x: 0, y: 0 }
     }));
-  }, [members, onAddClick, layoutMode, relations, computeBinaryLayout]);
+  }, [members, relations, computeBinaryLayout, onAddClick, handleDivorce]);
 
   const edges = useMemo(() => relations
-    .filter(r => r.type === 'parent' || r.type === 'spouse')
+    .filter(r => r.type === 'parent' || r.type === 'spouse' || r.type === 'divorced')
     .map((r, idx) => ({
       id: "e" + idx,
       source: String(r.from),
       target: String(r.to),
       type: r.type === 'parent' ? 'smoothstep' : 'straight',
       animated: false,
-      style: r.type === 'spouse' ? { strokeDasharray: '4 4' } : undefined
+      style: r.type === 'spouse' ? { strokeDasharray: '4 4' } : (r.type === 'divorced' ? { stroke: '#dc3545', strokeDasharray: '6 4' } : undefined)
     })), [relations]);
 
   const nodeTypes = useMemo(() => ({ member: MemberNode }), []);
@@ -165,8 +192,8 @@ export default function TreeCanvas({ members = [], relations = [] }) {
       name: form.name || 'Thành viên mới',
       gender: form.gender || '',
       birthDate: form.birthDate || '',
-      deathDate: form.deathDate || '', // <-- THÊM MỚI
-      avatarUrl: form.avatarUrl || ''   // <-- THÊM MỚI
+      deathDate: form.deathDate || '',
+      avatarUrl: form.avatarUrl || ''
     };
     const nextMembers = [...members, newMember];
     let nextRelations = [...relations];
@@ -186,7 +213,7 @@ export default function TreeCanvas({ members = [], relations = [] }) {
   return (
     <div className="border rounded bg-white" style={{ height: 540 }}>
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView>
-        <Background />
+        <Background color="#eee" gap={16} />
       </ReactFlow>
 
       {showForm && (
@@ -223,7 +250,6 @@ export default function TreeCanvas({ members = [], relations = [] }) {
                     <label className="form-label">Ngày sinh</label>
                     <input type="date" className="form-control" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
                   </div>
-                  {/* -- THAY ĐỔI BẮT ĐẦU -- */}
                   <div className="mb-3">
                     <label className="form-label">Ngày mất</label>
                     <input type="date" className="form-control" value={form.deathDate} onChange={(e) => setForm({ ...form, deathDate: e.target.value })} />
@@ -232,7 +258,6 @@ export default function TreeCanvas({ members = [], relations = [] }) {
                     <label className="form-label">URL Hình ảnh</label>
                     <input type="text" className="form-control" placeholder="https://example.com/avatar.png" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} />
                   </div>
-                  {/* -- THAY ĐỔI KẾT THÚC -- */}
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-outline-secondary" onClick={() => setShowForm(false)}>Hủy</button>

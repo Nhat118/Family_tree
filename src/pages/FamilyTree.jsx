@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useTree } from "../contexts/TreeContext";
-import BinaryTreeCanvas from "../components/BinaryTreeCanvas";
+import TreeCanvas from "../components/TreeCanvas";
 import { upsertRelation, removeRelation } from "../services/relationService";
 import MemberList from "../components/MemberList";
 import { ArrowLeft, Edit3, Trash2, Users, Plus, Settings, List, TreePine } from "lucide-react";
@@ -245,9 +245,9 @@ export default function FamilyTree() {
                 </div>
               </div>
               <div className="card-body p-0">
-                <BinaryTreeCanvas 
-                  members={activeTree.members || []} 
-                  relations={activeTree.relations || []} 
+                <TreeCanvas
+                  members={activeTree.members || []}
+                  relations={activeTree.relations || []}
                 />
               </div>
             </div>
